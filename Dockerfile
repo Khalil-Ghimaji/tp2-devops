@@ -1,5 +1,10 @@
-FROM python:3.12.8-slim
+# Image de base à jour (Debian bookworm) : le tag reste explicite (jamais "latest"),
+# et on applique les correctifs de sécurité OS disponibles au moment du build.
+FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
