@@ -1,6 +1,6 @@
 replicaCount: 2
 image:
-  repository: ghcr.io/Khalil-Ghimaji/tp2-devops/payment-api   # <- à adapter
+  repository: ghcr.io/khalil-ghimaji/tp2-devops/payment-api   # <- à adapter
   tag: initial
 service: { port: 8000 }
 env:
