@@ -4,9 +4,6 @@ on:
   push:
     branches: [main]
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}/payment-api
-
 jobs:
   test-quality:
     runs-on: ubuntu-latest
@@ -21,7 +18,7 @@ jobs:
       - name: Tests + couverture (>= 85 %, sinon échec)
         run: pytest
       - name: SonarQube analysis + Quality Gate (bloquant)
-        uses: sonarsource/sonarqube-scan-action@v6
+        uses: sonarsource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -33,6 +30,8 @@ jobs:
     permissions: { contents: read, packages: write }
     steps:
       - uses: actions/checkout@v6
+      - name: Nom d'image en minuscules (exigé par Docker/GHCR)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/payment-api" >> "$GITHUB_ENV"
       - name: Build
         run: docker build -t $IMAGE:${{ github.sha }} .
       - name: Trivy (CRITICAL => échec)
