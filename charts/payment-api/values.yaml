@@ -1,0 +1,11 @@
+replicaCount: 2
+image:
+  repository: ghcr.io/Khalil-Ghimaji/tp2-devops/payment-api   # <- à adapter
+  tag: initial
+service: { port: 8000 }
+env:
+  FLAKY_ERROR_RATE: "0.3"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4318
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 256Mi }

@@ -1,0 +1,58 @@
+# helm upgrade --install kps prometheus-community/kube-prometheus-stack -n observability -f this.yaml
+prometheus:
+  prometheusSpec:
+    ruleSelectorNilUsesHelmValues: false
+    additionalScrapeConfigs:
+      - job_name: annotated-pods          # scrape auto des pods annotés prometheus.io/*
+        kubernetes_sd_configs: [{ role: pod }]
+        relabel_configs:
+          - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape], action: keep, regex: "true" }
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - { source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path], action: replace, target_label: __metrics_path__ }
+          - { source_labels: [__meta_kubernetes_pod_label_app], target_label: app }
+          - { source_labels: [__meta_kubernetes_namespace], target_label: namespace }
+          - { source_labels: [__meta_kubernetes_pod_name], target_label: pod }
+alertmanager:
+  config:
+    route:
+      receiver: "null"
+      group_by: [alertname]
+      routes:
+        - { matchers: ['severity="critical"'], receiver: pager }
+        - { matchers: ['severity="warning"'],  receiver: slack }
+    receivers:
+      - name: "null"
+      - name: pager            # remplacer par PagerDuty/Opsgenie ; webhook pour le TP
+        webhook_configs: [{ url: http://webhook-sink.observability:8080/page, send_resolved: true }]
+      - name: slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook/url   # secret K8s, jamais en clair dans git
+            channel: "#sre-alerts"
+            send_resolved: true
+            title: "{{ .CommonLabels.alertname }}"
+            text: "{{ .CommonAnnotations.summary }}"
+  alertmanagerSpec:
+    secrets: [slack-webhook]
+grafana:
+  additionalDataSources:
+    - { name: Prometheus-SRE, type: prometheus, uid: prom, url: "http://kps-kube-prometheus-stack-prometheus:9090", access: proxy }
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki:3100
+      access: proxy
+      jsonData:
+        derivedFields:          # trace_id dans le log JSON -> lien vers Tempo
+          - { name: trace_id, matcherRegex: '"trace_id": "(\w+)"', url: "$${__value.raw}", datasourceUid: tempo }
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo:3100
+      access: proxy
+      jsonData:
+        tracesToLogsV2: { datasourceUid: loki, filterByTraceID: true, customQuery: true, query: '{app="payment-api"} |= "$${__trace.traceId}"' }
+        serviceMap: { datasourceUid: prom }

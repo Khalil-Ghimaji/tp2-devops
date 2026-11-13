@@ -1,0 +1,67 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/payment-api
+
+jobs:
+  test-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check app tests
+      - name: Tests + couverture (>= 85 %, sinon échec)
+        run: pytest
+      - name: SonarQube analysis + Quality Gate (bloquant)
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        # sonar.qualitygate.wait=true => le step échoue si la gate est KO
+
+  build-scan-push:
+    needs: test-quality
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t $IMAGE:${{ github.sha }} .
+      - name: Trivy (CRITICAL => échec)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+      - name: Login GHCR
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        if: github.ref == 'refs/heads/main'
+        run: docker push $IMAGE:${{ github.sha }}
+
+  gitops-bump:
+    # Met à jour le tag d'image dans values.yaml : ArgoCD synchronise ensuite.
+    if: github.ref == 'refs/heads/main'
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sed -i "s/^  tag: .*/  tag: ${{ github.sha }}/" charts/payment-api/values.yaml
+          git config user.name ci-bot && git config user.email ci@example.com
+          git commit -am "chore: deploy ${{ github.sha }}" && git push

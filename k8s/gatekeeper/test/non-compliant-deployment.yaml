@@ -1,0 +1,13 @@
+# Doit être REJETÉ : tag latest + pas de resources.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: bad-app, namespace: payment }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: bad-app } }
+  template:
+    metadata: { labels: { app: bad-app } }
+    spec:
+      containers:
+        - name: web
+          image: nginx:latest
